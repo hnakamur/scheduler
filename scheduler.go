@@ -3,6 +3,7 @@ package scheduler
 
 import (
 	"container/heap"
+	"sync"
 	"time"
 
 	"golang.org/x/net/context"
@@ -17,6 +18,7 @@ type Item struct {
 type queueItem struct {
 	schedule Item
 	index    int // The index of the queueItem in the heap
+	id       int64
 }
 
 type queue []*queueItem
@@ -47,7 +49,6 @@ func (q *queue) Pop() interface{} {
 	old := *q
 	n := len(old)
 	queueItem := old[n-1]
-	queueItem.index = -1 // for safety
 	*q = old[0 : n-1]
 	return queueItem
 }
@@ -56,10 +57,13 @@ func (q *queue) Pop() interface{} {
 // The order of items at the same time is not specified and may not the
 // same order as calls of Schedule() for those items.
 type Scheduler struct {
-	C     chan Item
-	ctx   context.Context
-	queue queue
-	timer *time.Timer
+	C      chan Item
+	ctx    context.Context
+	queue  queue
+	timer  *time.Timer
+	itemID int64
+
+	mu sync.Mutex
 }
 
 // NewScheduler creates a scheduler. Pass a context created with context.WithCancel()
@@ -80,9 +84,31 @@ func NewScheduler(ctx context.Context) *Scheduler {
 }
 
 // Schedule an item.
-func (s *Scheduler) Schedule(schedule Item) {
-	heap.Push(&s.queue, &queueItem{schedule: schedule})
+func (s *Scheduler) Schedule(schedule Item) int64 {
+	s.mu.Lock()
+	s.itemID++
+	item := &queueItem{schedule: schedule, id: s.itemID}
+	heap.Push(&s.queue, item)
 	s.updateTimer()
+	s.mu.Unlock()
+	return s.itemID
+}
+
+// Cancel the item specified with the id returned from Schedule().
+// It returns true if the item is canceled. It returns false if
+// the item is not found since the id was wrong or the time is
+// already dispatched.
+func (s *Scheduler) Cancel(id int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, item := range s.queue {
+		if item.id == id {
+			heap.Remove(&s.queue, item.index)
+			s.updateTimer()
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Scheduler) updateTimer() {
@@ -104,9 +130,11 @@ func (s *Scheduler) run() {
 	for {
 		select {
 		case <-s.timer.C:
+			s.mu.Lock()
 			queueItem := heap.Pop(&s.queue).(*queueItem)
 			s.C <- queueItem.schedule
 			s.updateTimer()
+			s.mu.Unlock()
 		case <-s.ctx.Done():
 			s.timer.Stop()
 			return
