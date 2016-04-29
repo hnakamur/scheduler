@@ -18,8 +18,7 @@ type Task struct {
 	index int // The index of the task in the heap
 }
 
-// NewTask creates a task.
-func NewTask(t time.Time, data interface{}) *Task {
+func newTask(t time.Time, data interface{}) *Task {
 	return &Task{
 		time:  t,
 		Data:  data,
@@ -84,12 +83,15 @@ func (q *TaskQueue) Len() int {
 	return q.taskHeap.Len()
 }
 
-// Push a task to the TaskQueue.
-func (q *TaskQueue) Push(task *Task) {
+// Push a task with the time to dispatch and the user data.
+// It returns the task object which you can use for removing this task.
+func (q *TaskQueue) Push(t time.Time, data interface{}) *Task {
+	task := newTask(t, data)
 	heap.Push(&q.taskHeap, task)
+	return task
 }
 
-// Pop a task from the TaskQueue. Returns nil if the TaskQueue is empty.
+// Pop the earliest task from the TaskQueue. Returns nil if the TaskQueue is empty.
 func (q *TaskQueue) Pop() *Task {
 	if len(q.taskHeap) == 0 {
 		return nil
@@ -97,7 +99,7 @@ func (q *TaskQueue) Pop() *Task {
 	return heap.Pop(&q.taskHeap).(*Task)
 }
 
-// Peek returns the first task without removing it from the TaskQueue.
+// Peek returns the earliest task without removing it from the TaskQueue.
 // Returns nil if the TaskQueue is empty.
 func (q *TaskQueue) Peek() *Task {
 	if len(q.taskHeap) == 0 {
@@ -147,8 +149,7 @@ func NewScheduler(ctx context.Context) *Scheduler {
 // It returns the task object which you can use for canceling this task.
 func (s *Scheduler) Schedule(t time.Time, data interface{}) *Task {
 	s.mu.Lock()
-	task := NewTask(t, data)
-	s.queue.Push(task)
+	task := s.queue.Push(t, data)
 	s.updateTimer()
 	s.mu.Unlock()
 	return task
