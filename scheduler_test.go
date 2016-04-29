@@ -43,7 +43,7 @@ func TestSchedule(t *testing.T) {
 		select {
 		case task := <-s.C:
 			if verbose {
-				logger.Printf("received task=%v", task)
+				logger.Printf("received task.time=%v, data=%s", task.Time(), task.Data)
 			}
 			now := time.Now()
 			if now.Before(task.Time()) {
@@ -106,7 +106,7 @@ func TestCancel(t *testing.T) {
 		select {
 		case task := <-s.C:
 			if verbose {
-				logger.Printf("received task=%v", task)
+				logger.Printf("received task.time=%v, data=%s", task.Time(), task.Data)
 			}
 			now := time.Now()
 			if now.Before(task.Time()) {
@@ -169,7 +169,7 @@ func TestCancelFirst(t *testing.T) {
 		select {
 		case task := <-s.C:
 			if verbose {
-				logger.Printf("received task=%v", task)
+				logger.Printf("received task.time=%v, data=%s", task.Time(), task.Data)
 			}
 			now := time.Now()
 			if now.Before(task.Time()) {

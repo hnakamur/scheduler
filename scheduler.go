@@ -11,11 +11,20 @@ import (
 )
 
 // Task represents a scheduled task. It has the time and user data.
-// You may modify the user data after calling Schedule().
+// You may modify the user data after calling Scheduler.Schedule().
 type Task struct {
+	time  time.Time
 	Data  interface{}
 	index int // The index of the task in the heap
-	time  time.Time
+}
+
+// NewTask creates a task.
+func NewTask(t time.Time, data interface{}) *Task {
+	return &Task{
+		time:  t,
+		Data:  data,
+		index: -1, // for safety
+	}
 }
 
 // Time returns the time when the task will be dispatched.
@@ -23,37 +32,88 @@ func (t *Task) Time() time.Time {
 	return t.time
 }
 
-type queue []*Task
+type taskHeap []*Task
 
-func newQueue() queue {
+func newTaskHeap() taskHeap {
 	return make([]*Task, 0)
 }
 
-func (q queue) Len() int { return len(q) }
-func (q queue) Less(i, j int) bool {
-	return q[i].time.Before(q[j].time)
+func (h taskHeap) Len() int { return len(h) }
+func (h taskHeap) Less(i, j int) bool {
+	return h[i].time.Before(h[j].time)
 }
 
-func (q queue) Swap(i, j int) {
-	q[i], q[j] = q[j], q[i]
-	q[i].index = i
-	q[j].index = j
+func (h taskHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+	h[i].index = i
+	h[j].index = j
 }
 
-func (q *queue) Push(x interface{}) {
-	n := len(*q)
+func (h *taskHeap) Push(x interface{}) {
+	n := len(*h)
 	item := x.(*Task)
 	item.index = n
-	*q = append(*q, item)
+	*h = append(*h, item)
 }
 
-func (q *queue) Pop() interface{} {
-	old := *q
+func (h *taskHeap) Pop() interface{} {
+	old := *h
 	n := len(old)
 	item := old[n-1]
 	item.index = -1 // for safety
-	*q = old[0 : n-1]
+	*h = old[0 : n-1]
 	return item
+}
+
+// TaskQueue represents a queue for tasks. Tasks are sorted by time.
+type TaskQueue struct {
+	taskHeap taskHeap
+}
+
+// NewTaskQueue creates a TaskQueue.
+func NewTaskQueue() *TaskQueue {
+	q := &TaskQueue{
+		taskHeap: newTaskHeap(),
+	}
+	heap.Init(&q.taskHeap)
+	return q
+}
+
+// Len returns the length of the TaskQueue.
+func (q *TaskQueue) Len() int {
+	return q.taskHeap.Len()
+}
+
+// Push a task to the TaskQueue.
+func (q *TaskQueue) Push(task *Task) {
+	heap.Push(&q.taskHeap, task)
+}
+
+// Pop a task from the TaskQueue. Returns nil if the TaskQueue is empty.
+func (q *TaskQueue) Pop() *Task {
+	if len(q.taskHeap) == 0 {
+		return nil
+	}
+	return heap.Pop(&q.taskHeap).(*Task)
+}
+
+// Peek returns the first task without removing it from the TaskQueue.
+// Returns nil if the TaskQueue is empty.
+func (q *TaskQueue) Peek() *Task {
+	if len(q.taskHeap) == 0 {
+		return nil
+	}
+	return q.taskHeap[0]
+}
+
+// Remove a task from the TaskQueue. Returns true if the task was removed,
+// or false if the task was already removed.
+func (q *TaskQueue) Remove(task *Task) bool {
+	if task.index == -1 {
+		return false
+	}
+	heap.Remove(&q.taskHeap, task.index)
+	return true
 }
 
 // Scheduler sends a scheduled task with the channel C at the specified time.
@@ -62,7 +122,7 @@ func (q *queue) Pop() interface{} {
 type Scheduler struct {
 	C     chan *Task
 	ctx   context.Context
-	queue queue
+	queue *TaskQueue
 	timer *time.Timer
 	mu    sync.Mutex
 }
@@ -76,10 +136,9 @@ func NewScheduler(ctx context.Context) *Scheduler {
 	s := &Scheduler{
 		C:     make(chan *Task),
 		ctx:   ctx,
-		queue: newQueue(),
+		queue: NewTaskQueue(),
 		timer: timer,
 	}
-	heap.Init(&s.queue)
 	go s.run()
 	return s
 }
@@ -88,8 +147,8 @@ func NewScheduler(ctx context.Context) *Scheduler {
 // It returns the task object which you can use for canceling this task.
 func (s *Scheduler) Schedule(t time.Time, data interface{}) *Task {
 	s.mu.Lock()
-	task := &Task{time: t, Data: data}
-	heap.Push(&s.queue, task)
+	task := NewTask(t, data)
+	s.queue.Push(task)
 	s.updateTimer()
 	s.mu.Unlock()
 	return task
@@ -99,25 +158,22 @@ func (s *Scheduler) Schedule(t time.Time, data interface{}) *Task {
 // It returns true if the task is canceled, or false if the task has been
 // already dispatched.
 func (s *Scheduler) Cancel(task *Task) bool {
-	if task.index == -1 {
-		return false
-	}
 	s.mu.Lock()
-	heap.Remove(&s.queue, task.index)
+	removed := s.queue.Remove(task)
 	s.updateTimer()
 	s.mu.Unlock()
-	return true
+	return removed
 }
 
 func (s *Scheduler) updateTimer() {
-	if len(s.queue) == 0 {
+	if s.queue.Len() == 0 {
 		s.timer.Stop()
 		return
 	}
 
 	var d time.Duration
 	now := time.Now()
-	t := s.queue[0].time
+	t := s.queue.Peek().Time()
 	if t.After(now) {
 		d = t.Sub(now)
 	}
@@ -129,7 +185,10 @@ func (s *Scheduler) run() {
 		select {
 		case <-s.timer.C:
 			s.mu.Lock()
-			s.C <- heap.Pop(&s.queue).(*Task)
+			task := s.queue.Pop()
+			if task != nil {
+				s.C <- task
+			}
 			s.updateTimer()
 			s.mu.Unlock()
 		case <-s.ctx.Done():
