@@ -132,7 +132,7 @@ func TestCancel(t *testing.T) {
 	}
 }
 
-func TestCancelFirst(t *testing.T) {
+func TestCancelEarliest(t *testing.T) {
 	verbose := testing.Verbose()
 	var logger *log.Logger
 	if verbose {
@@ -158,9 +158,9 @@ func TestCancelFirst(t *testing.T) {
 		timeAndValues[i].task = s.Schedule(tv.t, tv.v)
 	}
 
-	canceled := s.Cancel(timeAndValues[0].task)
-	if !canceled {
-		t.Errorf("cancel failed")
+	task := s.CancelEarliest()
+	if task == nil {
+		t.Errorf("cancel earliest failed")
 	}
 
 	indexes := []int{3, 1, 4, 2}

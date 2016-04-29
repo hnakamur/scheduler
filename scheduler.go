@@ -18,6 +18,10 @@ type Task struct {
 	index int // The index of the task in the heap
 }
 
+// NOTE: This function is unexported to avoid a task is pushed to
+// multiple queues. For the same reason, TaskQueue.Push and
+// Scheduler.Schedule does not take a Task as an argument but
+// creates a task and return it.
 func newTask(t time.Time, data interface{}) *Task {
 	return &Task{
 		time:  t,
@@ -164,6 +168,16 @@ func (s *Scheduler) Cancel(task *Task) bool {
 	s.updateTimer()
 	s.mu.Unlock()
 	return removed
+}
+
+// Cancel the earliest task.
+// It returns the canceled task, or nil if the queue was empty.
+func (s *Scheduler) CancelEarliest() *Task {
+	s.mu.Lock()
+	task := s.queue.Pop()
+	s.updateTimer()
+	s.mu.Unlock()
+	return task
 }
 
 func (s *Scheduler) updateTimer() {
