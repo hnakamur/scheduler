@@ -1,35 +1,35 @@
-// Package scheduler provides a time scheduler.
+// Package scheduler provides a task scheduler which dipatches tasks
+// at the specified time for each task.
 package scheduler
 
 import (
 	"container/heap"
-	"sync"
 	"time"
 
 	"golang.org/x/net/context"
 )
 
-// Item represents a scheduled item. It has the time and user data.
-type Item struct {
-	Time time.Time
-	Data interface{}
+// Task represents a scheduled task. It has the time and user data.
+// You may modify the user data after calling Schedule().
+type Task struct {
+	Data  interface{}
+	index int // The index of the task in the heap
+	time  time.Time
 }
 
-type queueItem struct {
-	schedule Item
-	index    int // The index of the queueItem in the heap
-	id       int64
+func (t *Task) Time() time.Time {
+	return t.time
 }
 
-type queue []*queueItem
+type queue []*Task
 
 func newQueue() queue {
-	return make([]*queueItem, 0)
+	return make([]*Task, 0)
 }
 
 func (q queue) Len() int { return len(q) }
 func (q queue) Less(i, j int) bool {
-	return q[i].schedule.Time.Before(q[j].schedule.Time)
+	return q[i].time.Before(q[j].time)
 }
 
 func (q queue) Swap(i, j int) {
@@ -40,30 +40,28 @@ func (q queue) Swap(i, j int) {
 
 func (q *queue) Push(x interface{}) {
 	n := len(*q)
-	queueItem := x.(*queueItem)
-	queueItem.index = n
-	*q = append(*q, queueItem)
+	item := x.(*Task)
+	item.index = n
+	*q = append(*q, item)
 }
 
 func (q *queue) Pop() interface{} {
 	old := *q
 	n := len(old)
-	queueItem := old[n-1]
+	item := old[n-1]
+	item.index = -1 // for safety
 	*q = old[0 : n-1]
-	return queueItem
+	return item
 }
 
-// Scheduler sends a scheduled item with the channel C at the specified time.
-// The order of items at the same time is not specified and may not be the
-// same order as calls of Schedule() for those items.
+// Scheduler sends a scheduled task with the channel C at the specified time.
+// The order of tasks at the same time is not specified and may not be the
+// same order as calls of Schedule() for those tasks.
 type Scheduler struct {
-	C      chan Item
-	ctx    context.Context
-	queue  queue
-	timer  *time.Timer
-	itemID int64
-
-	mu sync.Mutex
+	C     chan *Task
+	ctx   context.Context
+	queue queue
+	timer *time.Timer
 }
 
 // NewScheduler creates a scheduler. Pass a context created with context.WithCancel()
@@ -73,7 +71,7 @@ func NewScheduler(ctx context.Context) *Scheduler {
 	timer := time.NewTimer(time.Second)
 	timer.Stop()
 	s := &Scheduler{
-		C:     make(chan Item),
+		C:     make(chan *Task),
 		ctx:   ctx,
 		queue: newQueue(),
 		timer: timer,
@@ -83,32 +81,25 @@ func NewScheduler(ctx context.Context) *Scheduler {
 	return s
 }
 
-// Schedule an item. It returns the item ID which you can use for canceling this item.
-func (s *Scheduler) Schedule(item Item) int64 {
-	s.mu.Lock()
-	s.itemID++
-	queueItem := &queueItem{schedule: item, id: s.itemID}
-	heap.Push(&s.queue, queueItem)
+// Schedule a task with the time to dispatch and the user data.
+// It returns the task object which you can use for canceling this task.
+func (s *Scheduler) Schedule(t time.Time, data interface{}) *Task {
+	task := &Task{time: t, Data: data}
+	heap.Push(&s.queue, task)
 	s.updateTimer()
-	s.mu.Unlock()
-	return s.itemID
+	return task
 }
 
-// Cancel the item specified with the ID returned from Schedule().
-// It returns true if the item is canceled. It returns false if
-// the item is not found. This means the ID is wrong or the item has been
+// Cancel the task.
+// It returns true if the task is canceled, or false if the task has been
 // already dispatched.
-func (s *Scheduler) Cancel(id int64) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, item := range s.queue {
-		if item.id == id {
-			heap.Remove(&s.queue, item.index)
-			s.updateTimer()
-			return true
-		}
+func (s *Scheduler) Cancel(task *Task) bool {
+	if task.index == -1 {
+		return false
 	}
-	return false
+	heap.Remove(&s.queue, task.index)
+	s.updateTimer()
+	return true
 }
 
 func (s *Scheduler) updateTimer() {
@@ -119,7 +110,7 @@ func (s *Scheduler) updateTimer() {
 
 	var d time.Duration
 	now := time.Now()
-	t := s.queue[0].schedule.Time
+	t := s.queue[0].time
 	if t.After(now) {
 		d = t.Sub(now)
 	}
@@ -130,11 +121,8 @@ func (s *Scheduler) run() {
 	for {
 		select {
 		case <-s.timer.C:
-			s.mu.Lock()
-			queueItem := heap.Pop(&s.queue).(*queueItem)
-			s.C <- queueItem.schedule
+			s.C <- heap.Pop(&s.queue).(*Task)
 			s.updateTimer()
-			s.mu.Unlock()
 		case <-s.ctx.Done():
 			s.timer.Stop()
 			return

@@ -34,30 +34,30 @@ func TestSchedule(t *testing.T) {
 		{t: now.Add(5 * time.Second).Truncate(time.Second), v: "hoge"},
 	}
 	for _, tv := range timeAndValues {
-		s.Schedule(Item{Time: tv.t, Data: tv.v})
+		s.Schedule(tv.t, tv.v)
 	}
 
 	indexes := []int{0, 2, 1, 3}
 	i := 0
 	for {
 		select {
-		case schedule := <-s.C:
+		case task := <-s.C:
 			if verbose {
-				logger.Printf("received schedule=%v", schedule)
+				logger.Printf("received task=%v", task)
 			}
 			now := time.Now()
-			if now.Before(schedule.Time) {
-				t.Errorf("schedule received too early. now is %v; want %v", now, schedule.Time)
+			if now.Before(task.Time()) {
+				t.Errorf("task received too early. now is %v; want %v", now, task.Time())
 			}
-			if now.After(schedule.Time.Add(maxDelay)) {
-				t.Errorf("schedule delayed too much. now is %v; want %v", now, schedule.Time)
+			if now.After(task.Time().Add(maxDelay)) {
+				t.Errorf("task delayed too much. now is %v; want %v", now, task.Time())
 			}
 			tv := timeAndValues[indexes[i]]
-			if !schedule.Time.Equal(tv.t) {
-				t.Errorf("schedule time unmatch got %v; want %v", schedule.Time, tv.t)
+			if !task.Time().Equal(tv.t) {
+				t.Errorf("task time unmatch got %v; want %v", task.Time(), tv.t)
 			}
-			if schedule.Data != tv.v {
-				t.Errorf("schedule data unmatch got %v; want %v", schedule.Data, tv.v)
+			if task.Data != tv.v {
+				t.Errorf("task data unmatch got %v; want %v", task.Data, tv.v)
 			}
 
 			i++
@@ -81,9 +81,9 @@ func TestCancel(t *testing.T) {
 
 	now := time.Now()
 	timeAndValues := []struct {
-		t  time.Time
-		v  string
-		id int64
+		t    time.Time
+		v    string
+		task *Task
 	}{
 		{t: now.Add(1 * time.Second).Truncate(time.Second), v: "foo"},
 		{t: now.Add(3 * time.Second).Truncate(time.Second), v: "baz"},
@@ -92,11 +92,10 @@ func TestCancel(t *testing.T) {
 		{t: now.Add(5 * time.Second).Truncate(time.Second), v: "hoge"},
 	}
 	for i, tv := range timeAndValues {
-		id := s.Schedule(Item{Time: tv.t, Data: tv.v})
-		timeAndValues[i].id = id
+		timeAndValues[i].task = s.Schedule(tv.t, tv.v)
 	}
 
-	canceled := s.Cancel(timeAndValues[2].id)
+	canceled := s.Cancel(timeAndValues[2].task)
 	if !canceled {
 		t.Errorf("cancel failed")
 	}
@@ -105,23 +104,23 @@ func TestCancel(t *testing.T) {
 	i := 0
 	for {
 		select {
-		case schedule := <-s.C:
+		case task := <-s.C:
 			if verbose {
-				logger.Printf("received schedule=%v", schedule)
+				logger.Printf("received task=%v", task)
 			}
 			now := time.Now()
-			if now.Before(schedule.Time) {
-				t.Errorf("schedule received too early. now is %v; want %v", now, schedule.Time)
+			if now.Before(task.Time()) {
+				t.Errorf("task received too early. now is %v; want %v", now, task.Time())
 			}
-			if now.After(schedule.Time.Add(maxDelay)) {
-				t.Errorf("schedule delayed too much. now is %v; want %v", now, schedule.Time)
+			if now.After(task.Time().Add(maxDelay)) {
+				t.Errorf("task delayed too much. now is %v; want %v", now, task.Time())
 			}
 			tv := timeAndValues[indexes[i]]
-			if !schedule.Time.Equal(tv.t) {
-				t.Errorf("schedule time unmatch got %v; want %v", schedule.Time, tv.t)
+			if !task.Time().Equal(tv.t) {
+				t.Errorf("task time unmatch got %v; want %v", task.Time(), tv.t)
 			}
-			if schedule.Data != tv.v {
-				t.Errorf("schedule data unmatch got %v; want %v", schedule.Data, tv.v)
+			if task.Data != tv.v {
+				t.Errorf("task data unmatch got %v; want %v", task.Data, tv.v)
 			}
 
 			i++
@@ -145,9 +144,9 @@ func TestCancelFirst(t *testing.T) {
 
 	now := time.Now()
 	timeAndValues := []struct {
-		t  time.Time
-		v  string
-		id int64
+		t    time.Time
+		v    string
+		task *Task
 	}{
 		{t: now.Add(1 * time.Second).Truncate(time.Second), v: "foo"},
 		{t: now.Add(3 * time.Second).Truncate(time.Second), v: "baz"},
@@ -156,11 +155,10 @@ func TestCancelFirst(t *testing.T) {
 		{t: now.Add(4 * time.Second).Truncate(time.Second), v: "hoge"},
 	}
 	for i, tv := range timeAndValues {
-		id := s.Schedule(Item{Time: tv.t, Data: tv.v})
-		timeAndValues[i].id = id
+		timeAndValues[i].task = s.Schedule(tv.t, tv.v)
 	}
 
-	canceled := s.Cancel(timeAndValues[0].id)
+	canceled := s.Cancel(timeAndValues[0].task)
 	if !canceled {
 		t.Errorf("cancel failed")
 	}
@@ -169,23 +167,23 @@ func TestCancelFirst(t *testing.T) {
 	i := 0
 	for {
 		select {
-		case schedule := <-s.C:
+		case task := <-s.C:
 			if verbose {
-				logger.Printf("received schedule=%v", schedule)
+				logger.Printf("received task=%v", task)
 			}
 			now := time.Now()
-			if now.Before(schedule.Time) {
-				t.Errorf("schedule received too early. now is %v; want %v", now, schedule.Time)
+			if now.Before(task.Time()) {
+				t.Errorf("task received too early. now is %v; want %v", now, task.Time())
 			}
-			if now.After(schedule.Time.Add(maxDelay)) {
-				t.Errorf("schedule delayed too much. now is %v; want %v", now, schedule.Time)
+			if now.After(task.Time().Add(maxDelay)) {
+				t.Errorf("task delayed too much. now is %v; want %v", now, task.Time())
 			}
 			tv := timeAndValues[indexes[i]]
-			if !schedule.Time.Equal(tv.t) {
-				t.Errorf("schedule time unmatch got %v; want %v", schedule.Time, tv.t)
+			if !task.Time().Equal(tv.t) {
+				t.Errorf("task time unmatch got %v; want %v", task.Time(), tv.t)
 			}
-			if schedule.Data != tv.v {
-				t.Errorf("schedule data unmatch got %v; want %v", schedule.Data, tv.v)
+			if task.Data != tv.v {
+				t.Errorf("task data unmatch got %v; want %v", task.Data, tv.v)
 			}
 
 			i++
