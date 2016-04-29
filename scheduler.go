@@ -4,6 +4,7 @@ package scheduler
 
 import (
 	"container/heap"
+	"sync"
 	"time"
 
 	"golang.org/x/net/context"
@@ -63,6 +64,7 @@ type Scheduler struct {
 	ctx   context.Context
 	queue queue
 	timer *time.Timer
+	mu    sync.Mutex
 }
 
 // NewScheduler creates a scheduler. Pass a context created with context.WithCancel()
@@ -85,9 +87,11 @@ func NewScheduler(ctx context.Context) *Scheduler {
 // Schedule a task with the time to dispatch and the user data.
 // It returns the task object which you can use for canceling this task.
 func (s *Scheduler) Schedule(t time.Time, data interface{}) *Task {
+	s.mu.Lock()
 	task := &Task{time: t, Data: data}
 	heap.Push(&s.queue, task)
 	s.updateTimer()
+	s.mu.Unlock()
 	return task
 }
 
@@ -98,8 +102,10 @@ func (s *Scheduler) Cancel(task *Task) bool {
 	if task.index == -1 {
 		return false
 	}
+	s.mu.Lock()
 	heap.Remove(&s.queue, task.index)
 	s.updateTimer()
+	s.mu.Unlock()
 	return true
 }
 
@@ -122,8 +128,10 @@ func (s *Scheduler) run() {
 	for {
 		select {
 		case <-s.timer.C:
+			s.mu.Lock()
 			s.C <- heap.Pop(&s.queue).(*Task)
 			s.updateTimer()
+			s.mu.Unlock()
 		case <-s.ctx.Done():
 			s.timer.Stop()
 			return
