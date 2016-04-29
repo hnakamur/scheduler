@@ -17,6 +17,7 @@ type Task struct {
 	time  time.Time
 }
 
+// Time returns the time when the task will be dispatched.
 func (t *Task) Time() time.Time {
 	return t.time
 }
