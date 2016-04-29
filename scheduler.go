@@ -53,8 +53,8 @@ func (q *queue) Pop() interface{} {
 	return queueItem
 }
 
-// Scheduler sends a scheduled item with the channel at the specified time.
-// The order of items at the same time is not specified and may not the
+// Scheduler sends a scheduled item with the channel C at the specified time.
+// The order of items at the same time is not specified and may not be the
 // same order as calls of Schedule() for those items.
 type Scheduler struct {
 	C      chan Item
@@ -83,20 +83,20 @@ func NewScheduler(ctx context.Context) *Scheduler {
 	return s
 }
 
-// Schedule an item.
-func (s *Scheduler) Schedule(schedule Item) int64 {
+// Schedule an item. It returns the item ID which you can use for canceling this item.
+func (s *Scheduler) Schedule(item Item) int64 {
 	s.mu.Lock()
 	s.itemID++
-	item := &queueItem{schedule: schedule, id: s.itemID}
-	heap.Push(&s.queue, item)
+	queueItem := &queueItem{schedule: item, id: s.itemID}
+	heap.Push(&s.queue, queueItem)
 	s.updateTimer()
 	s.mu.Unlock()
 	return s.itemID
 }
 
-// Cancel the item specified with the id returned from Schedule().
+// Cancel the item specified with the ID returned from Schedule().
 // It returns true if the item is canceled. It returns false if
-// the item is not found since the id was wrong or the time is
+// the item is not found. This means the ID is wrong or the item has been
 // already dispatched.
 func (s *Scheduler) Cancel(id int64) bool {
 	s.mu.Lock()
