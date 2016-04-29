@@ -23,15 +23,15 @@ func TestSchedule(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := NewScheduler(ctx)
 
-	now := time.Now()
+	now := time.Now().Truncate(100 * time.Millisecond)
 	timeAndValues := []struct {
 		t time.Time
 		v string
 	}{
-		{t: now.Add(1 * time.Second).Truncate(time.Second), v: "foo"},
-		{t: now.Add(3 * time.Second).Truncate(time.Second), v: "baz"},
-		{t: now.Add(2 * time.Second).Truncate(time.Second), v: "bar"},
-		{t: now.Add(5 * time.Second).Truncate(time.Second), v: "hoge"},
+		{t: now.Add(100 * time.Millisecond), v: "foo"},
+		{t: now.Add(300 * time.Millisecond), v: "baz"},
+		{t: now.Add(200 * time.Millisecond), v: "bar"},
+		{t: now.Add(500 * time.Millisecond), v: "hoge"},
 	}
 	for _, tv := range timeAndValues {
 		s.Schedule(tv.t, tv.v)
@@ -79,17 +79,17 @@ func TestCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := NewScheduler(ctx)
 
-	now := time.Now()
+	now := time.Now().Truncate(100 * time.Millisecond)
 	timeAndValues := []struct {
 		t    time.Time
 		v    string
 		task *Task
 	}{
-		{t: now.Add(1 * time.Second).Truncate(time.Second), v: "foo"},
-		{t: now.Add(3 * time.Second).Truncate(time.Second), v: "baz"},
-		{t: now.Add(5 * time.Second).Truncate(time.Second), v: "huga"},
-		{t: now.Add(2 * time.Second).Truncate(time.Second), v: "bar"},
-		{t: now.Add(5 * time.Second).Truncate(time.Second), v: "hoge"},
+		{t: now.Add(100 * time.Millisecond), v: "foo"},
+		{t: now.Add(300 * time.Millisecond), v: "baz"},
+		{t: now.Add(500 * time.Millisecond), v: "huga"},
+		{t: now.Add(200 * time.Millisecond), v: "bar"},
+		{t: now.Add(500 * time.Millisecond), v: "hoge"},
 	}
 	for i, tv := range timeAndValues {
 		timeAndValues[i].task = s.Schedule(tv.t, tv.v)
@@ -142,17 +142,17 @@ func TestCancelFirst(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := NewScheduler(ctx)
 
-	now := time.Now()
+	now := time.Now().Truncate(100 * time.Millisecond)
 	timeAndValues := []struct {
 		t    time.Time
 		v    string
 		task *Task
 	}{
-		{t: now.Add(1 * time.Second).Truncate(time.Second), v: "foo"},
-		{t: now.Add(3 * time.Second).Truncate(time.Second), v: "baz"},
-		{t: now.Add(5 * time.Second).Truncate(time.Second), v: "huga"},
-		{t: now.Add(2 * time.Second).Truncate(time.Second), v: "bar"},
-		{t: now.Add(4 * time.Second).Truncate(time.Second), v: "hoge"},
+		{t: now.Add(100 * time.Millisecond), v: "foo"},
+		{t: now.Add(300 * time.Millisecond), v: "baz"},
+		{t: now.Add(500 * time.Millisecond), v: "huga"},
+		{t: now.Add(200 * time.Millisecond), v: "bar"},
+		{t: now.Add(400 * time.Millisecond), v: "hoge"},
 	}
 	for i, tv := range timeAndValues {
 		timeAndValues[i].task = s.Schedule(tv.t, tv.v)
